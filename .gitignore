@@ -1,0 +1,37 @@
+# segredos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+
+# dependências
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# build e artefatos
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# sistema e editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# trabalho local que não entra no repositório
+rascunho/
+tmp/
+
+# documentos de teste: gerados, nunca versionados
+# (nenhum dado real entra aqui — ver CLAUDE.md)
+fixtures/gerados/
