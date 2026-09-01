@@ -147,7 +147,7 @@ Resumo da cobertura, restrição por restrição: **(a)** latência e falha do f
 | [0003](adr/0003-fila-de-processamento.md) | Mecanismo de fila: fila de mensagens dedicada versus tabela de jobs no próprio banco |
 | 0004 _(a criar)_ | Estratégia de idempotência: hash de conteúdo versus hash de metadados do arquivo |
 | [0005](adr/0005-calculo-do-nivel-de-confianca.md) | Cálculo do nível de confiança do documento e comportamento do dublê de extração |
-| 0006 _(a criar)_ | Granularidade: monolito modular versus serviços separados para esta entrega |
+| [0006](adr/0006-granularidade-dos-modulos.md) | Granularidade dos módulos e organização dos pacotes: pacote por funcionalidade versus portas e adaptadores |
 
 ## 9. O que este projeto conscientemente não resolve
 
