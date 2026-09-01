@@ -21,6 +21,11 @@ build/
 .coverage
 htmlcov/
 
+# build Java / Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+
 # sistema e editor
 .DS_Store
 Thumbs.db

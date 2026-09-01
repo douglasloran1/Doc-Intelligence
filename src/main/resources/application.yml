@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: doc-intelligence
+
+  # Conexao com PostgreSQL local (ADR 0002). Valores de exemplo; sobrescreva por
+  # variavel de ambiente. O README documenta como subir o banco.
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/doc_intelligence}
+    username: ${DB_USERNAME:doc_intelligence}
+    password: ${DB_PASSWORD:doc_intelligence}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Fatia vertical: schema gerado pelo Hibernate. Migracao versionada
+      # (Flyway) fica para uma parte posterior.
+      ddl-auto: update
+    properties:
+      hibernate.format_sql: true
+
+  servlet:
+    multipart:
+      # Acima do teto de 15 MB da regra de negocio, para o 422 proprio (com
+      # codigo de motivo) responder antes do corte do container.
+      max-file-size: 20MB
+      max-request-size: 25MB
+
+server:
+  port: 8080
