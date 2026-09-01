@@ -37,3 +37,8 @@ worker:
   lease-segundos: 60          # expiração da reivindicação do worker sobre um job
   timeout-adaptador-segundos: 45   # ponto de extensão: o dublê é síncrono e não é interrompido; passa a valer com o adaptador real
 
+# Fila de conferência humana (secao 4). Lease mais longo que o do worker — é uma
+# pessoa revisando, não uma máquina. Sem valor testado (achado 10).
+conferencia:
+  lease-segundos: 300
+

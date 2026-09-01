@@ -67,6 +67,15 @@ public class Documento {
     @Column(name = "campos_extraidos", columnDefinition = "jsonb")
     private Map<String, Object> camposExtraidos;
 
+    /**
+     * Correcao aplicada pelo operador na conferencia (secao 3, "correcao aplicada
+     * (se houver)"). Coluna {@code jsonb}, valor por campo, sem confianca — e
+     * revisao humana. Nulo enquanto nao houve conferencia.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "correcao_aplicada", columnDefinition = "jsonb")
+    private Map<String, Object> correcaoAplicada;
+
     /** Minimo das confiancas dos campos obrigatorios do tipo (ADR 0005). Nulo ate a extracao. */
     @Column(name = "confianca")
     private Double confianca;
@@ -88,6 +97,14 @@ public class Documento {
 
     @Column(name = "reivindicado_em")
     private Instant reivindicadoEm;
+
+    /**
+     * Instante em que a reivindicacao da conferencia expira (secao 4). Guardado
+     * explicitamente para o {@code 409} da disputa poder dizer ate quando o
+     * documento fica preso (achado 15). Nulo quando nao ha reivindicacao ativa.
+     */
+    @Column(name = "reivindicacao_expira_em")
+    private Instant reivindicacaoExpiraEm;
 
     @Column(name = "criado_em", nullable = false, updatable = false)
     private Instant criadoEm;

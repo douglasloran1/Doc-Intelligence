@@ -1,5 +1,8 @@
 package br.com.docintelligence.documento;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -8,9 +11,11 @@ import java.io.IOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Recebimento de documento: valida na fronteira, deduplica por hash e cria o
@@ -69,6 +74,41 @@ public class DocumentoService {
         jobRepository.save(JobProcessamento.pendentePara(documento));
 
         return new ResultadoCriacao(documento, true);
+    }
+
+    /** {@code GET /documentos/{id}} (secao 4): detalhe + histórico. Leitura pura. */
+    @Transactional(readOnly = true)
+    public DocumentoDetalhadoResponse detalhar(UUID id) {
+        Documento documento = documentoRepository.findById(id)
+                .orElseThrow(() -> new RecursoNaoEncontradoException(
+                        "documento_nao_encontrado", "Documento " + id + " nao existe."));
+        List<TransicaoEstado> historico = transicaoRepository.historicoDo(id);
+        return DocumentoDetalhadoResponse.de(documento, historico);
+    }
+
+    /** {@code GET /documentos?status=&tipo=} (secao 4): listagem paginada. Leitura pura. */
+    @Transactional(readOnly = true)
+    public PaginaResponse<DocumentoResumoResponse> listar(String status, String tipo,
+                                                          int pagina, int tamanho) {
+        EstadoDocumento estado = parseEstado(status);
+        String filtroTipo = (tipo == null || tipo.isBlank()) ? null : tipo.trim();
+
+        Page<Documento> page = documentoRepository.listar(estado, filtroTipo,
+                PageRequest.of(pagina, tamanho, Sort.by("criadoEm").descending()));
+
+        return PaginaResponse.de(page, page.map(DocumentoResumoResponse::de).getContent());
+    }
+
+    private static EstadoDocumento parseEstado(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        try {
+            return EstadoDocumento.valueOf(status.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new RequisicaoInvalidaException("status_invalido",
+                    "Estado desconhecido: " + status + ".");
+        }
     }
 
     private void validar(MultipartFile arquivo) {

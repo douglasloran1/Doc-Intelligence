@@ -3,6 +3,7 @@ package br.com.docintelligence.documento;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -11,7 +12,9 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -23,6 +26,9 @@ class DocumentoControllerTest {
 
     @MockitoBean
     private DocumentoService service;
+
+    @MockitoBean
+    private ConferenciaService conferencia;
 
     @Test
     void devolve422ComCodigoDeMotivoQuandoOArquivoEhRecusado() throws Exception {
@@ -73,5 +79,48 @@ class DocumentoControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(existente.getId().toString()))
                 .andExpect(jsonPath("$.estado").value("pronto"));
+    }
+
+    @Test
+    void getPorIdDevolve404ComCodigoDeMotivoQuandoNaoExiste() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(service.detalhar(id)).thenThrow(new RecursoNaoEncontradoException(
+                "documento_nao_encontrado", "Documento " + id + " nao existe."));
+
+        mockMvc.perform(get("/documentos/{id}", id))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.codigo").value("documento_nao_encontrado"));
+    }
+
+    @Test
+    void reivindicarDelegaAConferenciaEDevolveODetalhe() throws Exception {
+        UUID id = UUID.randomUUID();
+        Documento doc = new Documento();
+        doc.setId(id);
+        doc.setTipo("identidade");
+        doc.setEstado(EstadoDocumento.EM_CONFERENCIA);
+        doc.setHashConteudo("c".repeat(64));
+        when(conferencia.reivindicar(id, "op-1")).thenReturn(doc);
+        when(service.detalhar(id)).thenReturn(
+                DocumentoDetalhadoResponse.de(doc, java.util.List.of()));
+
+        mockMvc.perform(post("/documentos/{id}/reivindicar", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"operador\":\"op-1\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.estado").value("em_conferencia"));
+    }
+
+    @Test
+    void rejeitarSemMotivoPropaga422() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(conferencia.rejeitar(id, "op-1", null)).thenThrow(new RequisicaoInvalidaException(
+                "motivo_obrigatorio", "O campo 'motivo' e obrigatorio para rejeitar um documento."));
+
+        mockMvc.perform(post("/documentos/{id}/rejeitar", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"operador\":\"op-1\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.codigo").value("motivo_obrigatorio"));
     }
 }

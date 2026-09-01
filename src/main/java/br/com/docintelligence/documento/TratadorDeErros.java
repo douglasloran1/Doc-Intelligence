@@ -32,4 +32,22 @@ class TratadorDeErros {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
                 .body(new ErroResponse("arquivo_grande", "Arquivo acima do limite de 15 MB."));
     }
+
+    @ExceptionHandler(RecursoNaoEncontradoException.class)
+    ResponseEntity<ErroResponse> naoEncontrado(RecursoNaoEncontradoException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErroResponse(ex.getCodigoMotivo(), ex.getMessage()));
+    }
+
+    @ExceptionHandler(ConflitoDeEstadoException.class)
+    ResponseEntity<ErroResponse> conflito(ConflitoDeEstadoException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErroResponse(ex.getCodigoMotivo(), ex.getMessage()));
+    }
+
+    @ExceptionHandler(RequisicaoInvalidaException.class)
+    ResponseEntity<ErroResponse> requisicaoInvalida(RequisicaoInvalidaException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(new ErroResponse(ex.getCodigoMotivo(), ex.getMessage()));
+    }
 }

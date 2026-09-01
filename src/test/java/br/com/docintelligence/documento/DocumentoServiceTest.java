@@ -96,6 +96,17 @@ class DocumentoServiceTest {
     }
 
     @Test
+    void detalharLancaNaoEncontradoQuandoODocumentoNaoExiste() {
+        java.util.UUID id = java.util.UUID.randomUUID();
+        when(documentoRepository.findById(id)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.detalhar(id))
+                .asInstanceOf(throwable(RecursoNaoEncontradoException.class))
+                .extracting(RecursoNaoEncontradoException::getCodigoMotivo)
+                .isEqualTo("documento_nao_encontrado");
+    }
+
+    @Test
     void mesmoConteudoProduzOMesmoHash() {
         byte[] bytes = "identidade-joao".getBytes();
         MockMultipartFile a = new MockMultipartFile("arquivo", "a.jpg", "image/jpeg", bytes);
