@@ -134,7 +134,7 @@ API HTTP, JSON. Toda resposta de erro inclui um código de motivo, não apenas u
 
 As sete restrições declaradas estão em [`restricoes.md`](restricoes.md), cada uma marcada como tratada ou como risco conhecido aceito, com justificativa. Este documento não as repete — aponta para lá.
 
-Resumo do que esta especificação já cobre diretamente: a latência e a falha do fornecedor (seção 6, processamento assíncrono com retry); a troca de versão do modelo e dos prompts (seção 5, fronteira do adaptador); a duplicação de envio (seção 4, idempotência por hash na criação); e a conferência concorrente entre duas pessoas do atendimento (seção 4, reivindicação com expiração idêntica ao padrão usado na fila de processamento).
+Resumo da cobertura, restrição por restrição: **(a)** latência e falha do fornecedor — processamento assíncrono com timeout, retry e backoff (seção 6); **(b)** entrada não confiável — validação de formato e tamanho na fronteira, com `422` antes da fila (seção 4); **(c)** duplicação de envio — idempotência por hash na criação (seção 4); **(d)** dado pessoal — minimização no nome do arquivo (seção 3), com o restante como risco aceito (seção 9); **(e)** volume de pico — número de workers limitado e abaixo do rate limit do fornecedor, excesso enfileirado e não recusado (seção 6); **(f)** troca de versão do modelo e dos prompts — fronteira do adaptador de extração (seção 5); **(g)** conferência concorrente — reivindicação com expiração e `409` na disputa (seção 4). Os riscos residuais de cada uma estão em [`restricoes.md`](restricoes.md).
 
 ## 8. Decisões registradas
 
@@ -197,7 +197,7 @@ O crítico foi rodado sobre este documento e devolveu 15 achados, organizados po
 
 - **Achado 1** — cálculo de confiança definido no [ADR 0005](adr/0005-calculo-do-nivel-de-confianca.md) e refletido nas seções 2, 3 e 6: confiança por campo (0,0–1,0), confiança do documento = mínimo dos campos obrigatórios, limiar 0,85 provisório numa constante única.
 - **Achado 2** — campos obrigatórios e não-obrigatórios do tipo identidade tabelados na seção 2; nome padronizado do arquivo definido na seção 3 (`identidade_{id-do-documento}.{extensão-original}`, sem dado pessoal), com a decisão de minimização registrada em `restricoes.md` (d).
-- **Achado 4 (parcial)** — `restricoes.md` (a) e (b) preenchidos com números concretos: formatos `jpg`/`jpeg`/`png`/`pdf` e teto de 15 MB, com `422` na fronteira (b); timeout de 45s, 3 tentativas e backoff 5s/10s/20s (a). Seções 4 e 6 da spec atualizadas com esses números. A restrição (d) recebeu o tratamento de minimização no nome do arquivo; o restante de (d) segue em aberto.
+- **Achado 4** — todas as sete restrições de `restricoes.md` têm agora Tratamento e Risco residual preenchidos. (a) e (b) com números concretos (timeout 45s / 3 tentativas / backoff 5s-10s-20s; formatos `jpg`/`jpeg`/`png`/`pdf`, teto de 15 MB, `422` na fronteira), refletidos nas seções 4 e 6. (c), (e), (f) e (g) preenchidos puxando o que já estava decidido nas seções 3, 4, 5, 6 e 9 — idempotência por hash, limite de workers abaixo do rate limit, fronteira do adaptador, reivindicação com expiração. (d) tem tratamento parcial (minimização no nome do arquivo); o restante de (d) é o achado 7. O resumo da seção 7 foi reescrito restrição por restrição.
 - **Achado 3 (incidental)** — a regra de tamanho de arquivo do ADR 0005 (abaixo de 500 KB → confiança 0,60 → `aguardando_conferência`; a partir de 500 KB → 0,95 → `pronto`) faz o dublê percorrer os dois ramos principais da máquina de estados de ponta a ponta. Isso resolve o achado 3 para os ramos `pronto` e `aguardando_conferência` — **não** para `falha_temporária` e `falha_definitiva`. **A confirmar numa nova rodada do `critico-de-especificacao`.**
 - **Achado 5** — `pronto` passa a ser estado terminal, como `concluído` e `falha_definitiva`. A transição `consultado` saiu do diagrama da seção 3 e o texto explicita que nenhuma leitura muda estado — consistente com a seção 4.
 - **Achado 6** — a seção 5 ganhou o módulo **Domínio**, dono da validação de transições, do mapeamento de campos por tipo, do cálculo de confiança (ADR 0005) e da geração do nome padronizado. Chamado pela API e pelos workers; não conhece HTTP, fila nem persistência.
@@ -205,7 +205,7 @@ O crítico foi rodado sobre este documento e devolveu 15 achados, organizados po
 
 ### Em aberto
 
-- **`restricoes.md`:** restrições **(c)**, **(e)**, **(f)** e **(g)** ainda sem tratamento preenchido; e o restante de **(d)** — retenção/expurgo, criptografia em repouso, log de acesso, minimização do que vai ao fornecedor, destino do arquivo após o processamento (mesmo conteúdo do achado 7).
+- **Achado 7 / restante de (d)** — retenção/expurgo, criptografia em repouso, log de acesso, minimização do que vai ao fornecedor e destino do arquivo após o processamento continuam sem tratamento; risco aceito nesta entrega (spec §9).
 - **Achado importante 11** — não endereçado nesta rodada.
 - **Achados menores 12, 13, 14 e 15** — não endereçados.
 - **Achado 3** — aguarda confirmação do crítico para os ramos de falha.
