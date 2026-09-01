@@ -1,7 +1,7 @@
 # 0005 — Cálculo do nível de confiança do documento e comportamento do dublê de extração
 
 - **Data:** 2026-09-01
-- **Status:** proposta
+- **Status:** aceita
 
 ## Contexto
 

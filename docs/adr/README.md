@@ -9,5 +9,5 @@ Use `0000-template.md` como ponto de partida. Ver a skill `adr` em `.claude/skil
 | [0001](0001-avaliacao-de-harness-de-agentes.md) | Configuração do ambiente de trabalho com agentes | aceita |
 | [0002](0002-persistencia.md) | Persistência do estado do documento e dos campos extraídos | aceita |
 | [0003](0003-fila-de-processamento.md) | Mecanismo da fila de processamento | aceita |
-| [0005](0005-calculo-do-nivel-de-confianca.md) | Cálculo do nível de confiança do documento e comportamento do dublê de extração | proposta |
+| [0005](0005-calculo-do-nivel-de-confianca.md) | Cálculo do nível de confiança do documento e comportamento do dublê de extração | aceita |
 | [0006](0006-granularidade-dos-modulos.md) | Granularidade dos módulos e organização dos pacotes | aceita |
