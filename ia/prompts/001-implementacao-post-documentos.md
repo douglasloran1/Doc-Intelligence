@@ -3,7 +3,7 @@
 **Sessão:** 2026-09-01
 **Objetivo:** estrutura do projeto Spring Boot e o endpoint `POST /documentos` (recebimento, validação, idempotência), sem a fila/worker. Fechar o ADR 0006 antes de commitar o código.
 
-> Primeira sessão registrada em `ia/prompts/`. As sessões anteriores desta mesma conversa — revisão da especificação pelo `critico-de-especificacao` (duas rodadas), ADRs 0002, 0003, 0005 e 0006, preenchimento de `restricoes.md`, correções dos achados — não têm arquivo próprio aqui ainda. Decisão pendente: registrá-las retroativamente (marcadas como reconstruídas) ou tratá-las como raciocínio do usuário formalizado pelo agente (CLAUDE.md, "Divisão de trabalho").
+> Primeira sessão registrada em `ia/prompts/` em tempo real. As sessões anteriores desta mesma conversa — especificação, duas rodadas do `critico-de-especificacao` e suas correções, ADRs 0002/0003/0005/0006, preenchimento de `restricoes.md` — foram reconstruídas retroativamente em 2026-09-01 nos arquivos `000a`–`000f` (cada um com Nota de reconstrução).
 
 ---
 
