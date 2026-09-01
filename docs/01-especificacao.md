@@ -85,19 +85,21 @@ Cada transição de estado é um evento gravado, não uma sobrescrita — o regi
 
 **Confiança do documento.** É o **mínimo entre as confianças dos campos obrigatórios do tipo** — para identidade, nome completo, CPF e data de nascimento (a lista completa de campos e sua obrigatoriedade está na seção 2). Os campos não-obrigatórios não entram no cálculo, mesmo quando vêm com confiança baixa. O documento vai para `pronto` quando esse mínimo é `≥ 0,85` e para `aguardando_conferência` quando é menor. O limiar de 0,85 é provisório — não confirmado com o cliente — e vive numa única constante de configuração. Regra de agregação, valor do limiar e alternativas descartadas estão no ADR 0005.
 
+**Nome padronizado do arquivo.** O nome proposto segue o padrão `identidade_{id-do-documento}.{extensão-original}`, onde `id-do-documento` é o identificador interno que o sistema gera no recebimento e `extensão-original` é a extensão do arquivo enviado (`jpg`, `jpeg`, `png` ou `pdf`) — o sistema não converte o formato. Nenhum dado pessoal — CPF, nome, data de nascimento — entra no nome do arquivo; esses campos ficam apenas no registro do documento no banco. É decisão consciente de minimização (restrição de ambiente d, em [`restricoes.md`](restricoes.md)): o nome do arquivo circula entre sistemas internos e aparece em logs, e não deve carregar dado pessoal.
+
 ## 4. Contrato
 
 API HTTP, JSON. Toda resposta de erro inclui um código de motivo, não apenas um status HTTP — porque "o fornecedor não respondeu" e "o arquivo é inválido" pedem tratamento diferente de quem consome.
 
 | Operação | Descrição | Idempotente |
 |---|---|---|
-| `POST /documentos` | Recebe o arquivo (multipart). Responde com `id` e `status: recebido`. Calcula o hash do arquivo; se já existir um documento com o mesmo hash, responde com o documento existente em vez de criar um novo. | Sim, por hash |
+| `POST /documentos` | Recebe o arquivo (multipart). Formatos aceitos: `jpg`, `jpeg`, `png`, `pdf`; tamanho máximo 15 MB. Arquivo fora desses critérios é rejeitado com `422` antes de entrar na fila — sem item enfileirado, sem chamada ao fornecedor. Responde com `id` e `status: recebido`. Calcula o hash do arquivo; se já existir um documento com o mesmo hash, responde com o documento existente em vez de criar um novo. | Sim, por hash |
 | `GET /documentos/{id}` | Estado atual, campos extraídos, histórico de transições. | — (leitura) |
 | `GET /documentos?status=&tipo=` | Lista paginada, filtrável por estado e tipo. | — (leitura) |
 | `POST /documentos/{id}/reivindicar` | Marca o documento como em conferência por um identificador de operador, com expiração. Falha com `409` se já estiver reivindicado por outra pessoa e a reivindicação não tiver expirado. | Não |
 | `PATCH /documentos/{id}` | Grava a correção de campos feita por um humano; exige reivindicação ativa e do mesmo operador. Move para `concluído`. | Não |
 
-**Erros previstos, não apenas o caminho feliz:** arquivo corrompido ou formato não suportado (`422`); documento em estado que não permite a operação, por exemplo tentar corrigir um documento ainda `em_processamento` (`409`); reivindicação de item já reivindicado (`409`); fornecedor de extração indisponível — isto não é erro do chamador, e o documento permanece `em_processamento` para nova tentativa, sem expor falha de infraestrutura interna na resposta da API.
+**Erros previstos, não apenas o caminho feliz:** arquivo com formato fora de `jpg`/`jpeg`/`png`/`pdf`, acima de 15 MB, ou corrompido (`422`), recusado antes de entrar na fila; documento em estado que não permite a operação, por exemplo tentar corrigir um documento ainda `em_processamento` (`409`); reivindicação de item já reivindicado (`409`); fornecedor de extração indisponível — isto não é erro do chamador, e o documento permanece `em_processamento` para nova tentativa, sem expor falha de infraestrutura interna na resposta da API.
 
 ## 5. Módulos e fronteiras
 
@@ -115,7 +117,7 @@ API HTTP, JSON. Toda resposta de erro inclui um código de motivo, não apenas u
 
 **Por que assíncrono.** A chamada ao fornecedor de IA leva de 5 a 40 segundos e às vezes falha ou não responde. Processar dentro do ciclo da requisição HTTP significaria segurar a conexão de quem enviou por até 40 segundos e perder o trabalho inteiro a cada falha do fornecedor. `POST /documentos` responde imediatamente com o identificador; o processamento acontece fora do ciclo da requisição, num worker que consome a fila.
 
-**Falha e retry.** Cada tentativa de chamada ao adaptador tem timeout. Falha classificada como temporária (timeout, erro 5xx do fornecedor) aciona retry com backoff exponencial, até um limite de tentativas configurável; esgotado o limite, o documento vai para `falha_definitiva` e fica visível na listagem para intervenção manual — não desaparece silenciosamente.
+**Falha e retry.** Cada chamada ao adaptador tem timeout de 45 segundos. Falha classificada como temporária (timeout, erro 5xx do fornecedor) aciona retry com backoff exponencial de base 5 segundos — esperas de 5s, 10s e 20s entre tentativas — até o limite de 3 tentativas. Esgotado o limite, o documento vai para `falha_definitiva` e fica visível na listagem para intervenção manual — não desaparece silenciosamente. Os três valores (timeout, número de tentativas, base do backoff) ficam em configuração.
 
 **Reinício com trabalho em andamento.** Um worker que morre no meio do processamento não pode deixar o documento preso em `em_processamento` para sempre. A reivindicação do worker sobre o item de trabalho tem expiração; passado esse tempo sem conclusão, o item volta a ficar disponível para outro worker pegar. O mesmo padrão de "reivindicação com expiração" usado na fila de conferência humana se repete aqui, na fila de processamento — é o mesmo problema em duas escalas de tempo diferentes.
 
@@ -156,4 +158,48 @@ Resumo do que esta especificação já cobre diretamente: a latência e a falha 
 
 ## Registro de crítica
 
-_(Preencher: data em que o `critico-de-especificacao` foi rodado sobre este documento, os achados, e o que mudou por causa deles. Se algum achado foi conscientemente não endereçado, registrar qual e por quê.)_
+**Rodada do `critico-de-especificacao`:** 2026-08-31. **Registro atualizado em:** 2026-09-01.
+
+O crítico foi rodado sobre este documento e devolveu 15 achados, organizados por severidade. As correções vêm sendo feitas em rodadas; o que segue é o estado atual.
+
+### Os 15 achados
+
+**Bloqueantes**
+
+1. "Nível de confiança" sem regra de cálculo, sem escala e sem valor de limiar.
+2. Campos do tipo identidade e formato do nome padronizado nunca definidos.
+3. O dublê determinístico não exercita os ramos de erro e de conferência da máquina de estados.
+4. A seção 7 apontava para `restricoes.md` como evidência de cobertura, mas o arquivo estava com todos os tratamentos em branco.
+
+**Importantes**
+
+5. Incoerência entre o diagrama da seção 3 (um `GET` levaria o documento a `consultado`) e a seção 4 (`GET` é leitura pura); e `pronto` é ou não estado terminal.
+6. Nenhum módulo da seção 5 é dono da máquina de estados nem da lógica de domínio (nome padronizado, mapeamento de campos por tipo).
+7. Restrição (d) coberta pela metade: a spec não diz onde os bytes do arquivo original ficam, se são cifrados, com que log de acesso, nem o destino após o processamento.
+8. Restrição (a): nenhuma menção a teto de custo por janela de tempo.
+9. Sem rota de rejeição na conferência (arquivo ilegível, tipo errado, "não consigo corrigir") e sem operação definida sobre `falha_definitiva`.
+10. Números ausentes em bloco: formatos e tamanho de arquivo, timeout, número de tentativas, backoff, expiração das reivindicações, número de workers, paginação.
+11. A seção 2 não demarca quais mecanismos da seção 6 são código nesta entrega e quais são apenas desenho.
+
+**Menores**
+
+12. Idempotência por hash sem janela de tempo nem exceção por estado terminal.
+13. Quem declara o `tipo` na entrada não está dito; e o filtro por `tipo` numa fatia de um tipo só.
+14. A posse da conferência (restrição g) repousa sobre um identificador de operador auto-declarado e não verificado.
+15. O operador barrado com `409` não vê quem reivindicou nem quando a reivindicação expira.
+
+### Resolvido até aqui
+
+- **Achado 1** — cálculo de confiança definido no [ADR 0005](adr/0005-calculo-do-nivel-de-confianca.md) e refletido nas seções 2, 3 e 6: confiança por campo (0,0–1,0), confiança do documento = mínimo dos campos obrigatórios, limiar 0,85 provisório numa constante única.
+- **Achado 2** — campos obrigatórios e não-obrigatórios do tipo identidade tabelados na seção 2; nome padronizado do arquivo definido na seção 3 (`identidade_{id-do-documento}.{extensão-original}`, sem dado pessoal), com a decisão de minimização registrada em `restricoes.md` (d).
+- **Achado 4 (parcial)** — `restricoes.md` (a) e (b) preenchidos com números concretos: formatos `jpg`/`jpeg`/`png`/`pdf` e teto de 15 MB, com `422` na fronteira (b); timeout de 45s, 3 tentativas e backoff 5s/10s/20s (a). Seções 4 e 6 da spec atualizadas com esses números. A restrição (d) recebeu o tratamento de minimização no nome do arquivo; o restante de (d) segue em aberto.
+- **Achado 3 (incidental)** — a regra de tamanho de arquivo do ADR 0005 (abaixo de 500 KB → confiança 0,60 → `aguardando_conferência`; a partir de 500 KB → 0,95 → `pronto`) faz o dublê percorrer os dois ramos principais da máquina de estados de ponta a ponta. Isso resolve o achado 3 para os ramos `pronto` e `aguardando_conferência` — **não** para `falha_temporária` e `falha_definitiva`. **A confirmar numa nova rodada do `critico-de-especificacao`.**
+
+### Em aberto
+
+- **`restricoes.md`:** restrições **(c)**, **(e)**, **(f)** e **(g)** ainda sem tratamento preenchido; e o restante de **(d)** — retenção/expurgo, criptografia em repouso, log de acesso, minimização do que vai ao fornecedor, destino do arquivo após o processamento (mesmo conteúdo do achado 7).
+- **Achados importantes 5, 6, 9 e 11** — não endereçados nesta rodada.
+- **Achados menores 12, 13, 14 e 15** — não endereçados.
+- **Achado 3** — aguarda confirmação do crítico para os ramos de falha.
+- **Achado 8** (teto de custo) — registrado como risco residual em `restricoes.md` (a); não resolvido.
+- **Achado 10** — parcialmente resolvido: formatos, tamanho, timeout, tentativas e backoff agora têm número; expiração das reivindicações, número de workers e paginação continuam sem valor.
