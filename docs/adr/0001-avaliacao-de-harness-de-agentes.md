@@ -1,9 +1,7 @@
 # 0001 — Configuração do ambiente de trabalho com agentes
 
-- **Data:** AAAA-MM-DD
-- **Status:** proposta
-
-> **Rascunho.** O raciocínio abaixo reflete uma avaliação que precisa ser sua. Confira os fatos, ajuste o que discordar, apague o que não fizer sentido — e reescreva com as suas palavras antes de aceitar. Um ADR que você não consegue defender numa conversa não serve para nada.
+- **Data:** 2026-09-01
+- **Status:** aceita
 
 ## Contexto
 
