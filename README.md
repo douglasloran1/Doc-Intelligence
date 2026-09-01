@@ -2,7 +2,7 @@
 
 Serviço de inteligência documental: recebe imagem ou PDF, classifica o tipo, extrai os campos daquele tipo, propõe um nome padronizado e encaminha para conferência humana quando a confiança é baixa. Consumido por sistemas internos, não por navegador aberto.
 
-Entrega para o processo de seleção — trilha **[A · back-end / B · front-end — declarar aqui]**.
+Entrega para o processo de seleção — trilha **A · back-end**.
 
 ## Onde está cada coisa
 
