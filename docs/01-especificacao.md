@@ -25,9 +25,19 @@ Um caminho completo de ponta a ponta, estreito, para um único tipo de documento
 
 1. A API recebe o arquivo via `POST /documentos`, valida o essencial (formato, tamanho) e responde imediatamente com um identificador e o status `recebido`.
 2. O documento entra numa fila de processamento. Um worker consome a fila, chama o adaptador de extração — que nesta entrega é um dublê determinístico, não o fornecedor real — e recebe de volta um conjunto de campos com um nível de confiança.
-3. Se a confiança está acima do limiar definido, o documento vai para `pronto`, com nome padronizado proposto e campos extraídos. Se está abaixo, vai para `aguardando_conferência`.
+3. Se a confiança está acima do limiar (0,85, provisório — ver ADR 0005), o documento vai para `pronto`, com nome padronizado proposto e campos extraídos. Se está abaixo, vai para `aguardando_conferência`.
 4. `GET /documentos/{id}` devolve o estado atual e os campos, prontos ou não. `GET /documentos` lista com filtro por status.
 5. Para o documento em conferência, `POST /documentos/{id}/reivindicar` marca que alguém está corrigindo (com expiração), e `PATCH /documentos/{id}` grava a correção e move para `concluído`.
+
+**Campos do tipo identidade.** Só os campos obrigatórios entram no cálculo da confiança do documento (seção 3); os demais são extraídos e propostos, mas não seguram o documento na conferência se vierem com confiança baixa. Ver ADR 0005.
+
+| Campo | Obrigatório | Entra no cálculo de confiança do documento |
+|---|---|---|
+| Nome completo | Sim | Sim |
+| CPF | Sim | Sim |
+| Data de nascimento | Sim | Sim |
+| Órgão emissor | Não | Não |
+| Data de emissão | Não | Não |
 
 Esse caminho atravessa validação de entrada, fila assíncrona, adaptador substituível, persistência de estado, e a fila de conferência com controle de concorrência — que são exatamente os pontos onde o enunciado espera que o candidato demonstre raciocínio, e não apenas o caminho feliz de uma chamada síncrona a uma API de IA.
 
@@ -58,9 +68,9 @@ em_processamento
    │
    ├── falha_definitiva ──► [estado terminal — erro registrado, sem retry automático]
    │
-   ├── confiança ≥ limiar ──► pronto ──► consultado ──► [estado terminal]
+   ├── confiança ≥ 0,85 ──► pronto ──► consultado ──► [estado terminal]
    │
-   └── confiança < limiar ──► aguardando_conferência
+   └── confiança < 0,85 ──► aguardando_conferência
                                    │  (reivindicado por um humano)
                                    ▼
                               em_conferência
@@ -71,7 +81,9 @@ em_processamento
 
 Cada transição de estado é um evento gravado, não uma sobrescrita — o registro de quando e por que um documento mudou de estado é o que permite responder, depois, "por que este item ainda está pendente" sem precisar adivinhar.
 
-**Campos do documento:** identificador, hash do arquivo original, tipo declarado, estado atual, histórico de transições, campos extraídos (estrutura livre, dependente do tipo), nível de confiança, nome padronizado proposto, versão do adaptador/prompt que gerou a extração, quem reivindicou a conferência e quando, correção aplicada (se houver).
+**Campos do documento:** identificador, hash do arquivo original, tipo declarado, estado atual, histórico de transições, campos extraídos (estrutura dependente do tipo, cada campo com uma confiança própria entre 0,0 e 1,0 fornecida pelo adaptador), confiança do documento, nome padronizado proposto, versão do adaptador/prompt que gerou a extração, quem reivindicou a conferência e quando, correção aplicada (se houver).
+
+**Confiança do documento.** É o **mínimo entre as confianças dos campos obrigatórios do tipo** — para identidade, nome completo, CPF e data de nascimento (a lista completa de campos e sua obrigatoriedade está na seção 2). Os campos não-obrigatórios não entram no cálculo, mesmo quando vêm com confiança baixa. O documento vai para `pronto` quando esse mínimo é `≥ 0,85` e para `aguardando_conferência` quando é menor. O limiar de 0,85 é provisório — não confirmado com o cliente — e vive numa única constante de configuração. Regra de agregação, valor do limiar e alternativas descartadas estão no ADR 0005.
 
 ## 4. Contrato
 
@@ -109,6 +121,8 @@ API HTTP, JSON. Toda resposta de erro inclui um código de motivo, não apenas u
 
 **Concorrência no volume de pico.** O pico declarado é de mais de 800 documentos concentrado entre 9h e 11h — cerca de 40 vezes a média horária do resto do dia. O número de workers processando em paralelo é limitado explicitamente, e o limite é menor que o limite de taxa do fornecedor de IA, para que o sistema nunca dispare mais chamadas simultâneas do que o fornecedor aceita. Documentos que chegam acima da capacidade de processamento do momento não são rejeitados — ficam na fila, aguardando, e o cliente que enviou já recebeu confirmação de recebimento no passo 1.
 
+**O dublê de extração.** Nesta entrega o adaptador é um dublê determinístico no lugar do fornecedor real. Ele fixa a confiança dos campos obrigatórios pelo tamanho em bytes do arquivo recebido — abaixo de 500 KB, 0,60; a partir de 500 KB, 0,95 — e a dos campos não-obrigatórios em 0,90. Como a confiança do documento é o mínimo dos obrigatórios (seção 3), arquivo abaixo de 500 KB cai em `aguardando_conferência` e a partir de 500 KB vai para `pronto`. É o que permite percorrer os dois ramos da máquina de estados de ponta a ponta sem o fornecedor real: dois arquivos de tamanhos diferentes exercitam os dois caminhos. A relação entre tamanho e qualidade é aproximação assumida para esta entrega — arquivo menor comprime mais e tende a ter menos detalhe real — não uma medida de qualidade de OCR. Motivo da escolha e alternativas descartadas no ADR 0005.
+
 ## 7. Restrições do ambiente
 
 As sete restrições declaradas estão em [`restricoes.md`](restricoes.md), cada uma marcada como tratada ou como risco conhecido aceito, com justificativa. Este documento não as repete — aponta para lá.
@@ -123,7 +137,7 @@ Resumo do que esta especificação já cobre diretamente: a latência e a falha 
 | 0002 _(a criar)_ | Persistência: banco relacional versus documento, para o par estado/campos extraídos |
 | 0003 _(a criar)_ | Mecanismo de fila: fila de mensagens dedicada versus tabela de jobs no próprio banco |
 | 0004 _(a criar)_ | Estratégia de idempotência: hash de conteúdo versus hash de metadados do arquivo |
-| 0005 _(a criar)_ | Limiar de confiança: fonte do valor e onde ele é configurado |
+| [0005](adr/0005-calculo-do-nivel-de-confianca.md) | Cálculo do nível de confiança do documento e comportamento do dublê de extração |
 | 0006 _(a criar)_ | Granularidade: monolito modular versus serviços separados para esta entrega |
 
 ## 9. O que este projeto conscientemente não resolve
