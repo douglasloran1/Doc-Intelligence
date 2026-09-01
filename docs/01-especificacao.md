@@ -68,16 +68,19 @@ em_processamento
    │
    ├── falha_definitiva ──► [estado terminal — erro registrado, sem retry automático]
    │
-   ├── confiança ≥ 0,85 ──► pronto ──► consultado ──► [estado terminal]
+   ├── confiança ≥ 0,85 ──► pronto  [estado terminal]
    │
    └── confiança < 0,85 ──► aguardando_conferência
                                    │  (reivindicado por um humano)
                                    ▼
                               em_conferência
-                                   │  (correção registrada)
-                                   ▼
-                              concluído  [estado terminal]
+                                   │
+                                   ├── (correção registrada) ──► concluído  [estado terminal]
+                                   │
+                                   └── (não corrigível, com motivo obrigatório) ──► rejeitado  [estado terminal]
 ```
+
+Os estados terminais são `pronto`, `concluído`, `falha_definitiva` e `rejeitado` — um documento em qualquer um deles não muda mais de estado. Nenhuma leitura altera estado: `GET /documentos/{id}` e `GET /documentos` são consulta pura (seção 4).
 
 Cada transição de estado é um evento gravado, não uma sobrescrita — o registro de quando e por que um documento mudou de estado é o que permite responder, depois, "por que este item ainda está pendente" sem precisar adivinhar.
 
@@ -98,14 +101,16 @@ API HTTP, JSON. Toda resposta de erro inclui um código de motivo, não apenas u
 | `GET /documentos?status=&tipo=` | Lista paginada, filtrável por estado e tipo. | — (leitura) |
 | `POST /documentos/{id}/reivindicar` | Marca o documento como em conferência por um identificador de operador, com expiração. Falha com `409` se já estiver reivindicado por outra pessoa e a reivindicação não tiver expirado. | Não |
 | `PATCH /documentos/{id}` | Grava a correção de campos feita por um humano; exige reivindicação ativa e do mesmo operador. Move para `concluído`. | Não |
+| `POST /documentos/{id}/rejeitar` | Marca o documento como `rejeitado` (estado terminal) quando não é corrigível — arquivo ilegível, tipo errado, dados irrecuperáveis. Exige reivindicação ativa e do mesmo operador (mesma regra do `PATCH`) e um campo `motivo` no corpo (texto curto, obrigatório). Falha com `409` se o documento não estiver `em_conferência` ou a reivindicação não for do operador; `422` se faltar o `motivo`. | Não |
 
-**Erros previstos, não apenas o caminho feliz:** arquivo com formato fora de `jpg`/`jpeg`/`png`/`pdf`, acima de 15 MB, ou corrompido (`422`), recusado antes de entrar na fila; documento em estado que não permite a operação, por exemplo tentar corrigir um documento ainda `em_processamento` (`409`); reivindicação de item já reivindicado (`409`); fornecedor de extração indisponível — isto não é erro do chamador, e o documento permanece `em_processamento` para nova tentativa, sem expor falha de infraestrutura interna na resposta da API.
+**Erros previstos, não apenas o caminho feliz:** arquivo com formato fora de `jpg`/`jpeg`/`png`/`pdf`, acima de 15 MB, ou corrompido (`422`), recusado antes de entrar na fila; documento em estado que não permite a operação, por exemplo tentar corrigir um documento ainda `em_processamento` (`409`); reivindicação de item já reivindicado (`409`); rejeição sem `motivo` (`422`); fornecedor de extração indisponível — isto não é erro do chamador, e o documento permanece `em_processamento` para nova tentativa, sem expor falha de infraestrutura interna na resposta da API.
 
 ## 5. Módulos e fronteiras
 
 | Módulo | Responsabilidade | O que ele NÃO sabe |
 |---|---|---|
 | **API** | Validação de entrada, tradução HTTP ↔ domínio, contrato externo | Não sabe como a extração é feita, nem como a fila funciona por dentro |
+| **Domínio** | Valida as transições de estado (nenhuma etapa é pulada), mapeia campos por tipo de documento, calcula a confiança do documento (regra do ADR 0005) e gera o nome padronizado do arquivo | Não sabe de HTTP, de fila nem de persistência; é chamado pela API e pelos workers, mas não conhece a mecânica deles |
 | **Fila de processamento** | Ordena o trabalho, controla concorrência de workers, timeout, retry | Não sabe o que é um documento de identidade nem como extrair campos |
 | **Adaptador de extração** | Fala com o fornecedor de IA (ou com o dublê, nesta entrega); traduz prompt e resposta para um formato interno estável | Não sabe de fila, de HTTP, nem de persistência |
 | **Persistência** | Grava e lê estado do documento e histórico de transições | Não sabe de regra de negócio — apenas guarda o que mandam guardar |
@@ -121,7 +126,7 @@ API HTTP, JSON. Toda resposta de erro inclui um código de motivo, não apenas u
 
 **Reinício com trabalho em andamento.** Um worker que morre no meio do processamento não pode deixar o documento preso em `em_processamento` para sempre. A reivindicação do worker sobre o item de trabalho tem expiração; passado esse tempo sem conclusão, o item volta a ficar disponível para outro worker pegar. O mesmo padrão de "reivindicação com expiração" usado na fila de conferência humana se repete aqui, na fila de processamento — é o mesmo problema em duas escalas de tempo diferentes.
 
-**Concorrência no volume de pico.** O pico declarado é de mais de 800 documentos concentrado entre 9h e 11h — cerca de 40 vezes a média horária do resto do dia. O número de workers processando em paralelo é limitado explicitamente, e o limite é menor que o limite de taxa do fornecedor de IA, para que o sistema nunca dispare mais chamadas simultâneas do que o fornecedor aceita. Documentos que chegam acima da capacidade de processamento do momento não são rejeitados — ficam na fila, aguardando, e o cliente que enviou já recebeu confirmação de recebimento no passo 1.
+**Concorrência no volume de pico.** O pico declarado é de mais de 800 documentos concentrado entre 9h e 11h — cerca de 40 vezes a média horária do resto do dia. O número de workers processando em paralelo é limitado explicitamente, e o limite é menor que o limite de taxa do fornecedor de IA, para que o sistema nunca dispare mais chamadas simultâneas do que o fornecedor aceita. Documentos que chegam acima da capacidade de processamento do momento não são recusados — ficam na fila, aguardando, e o cliente que enviou já recebeu confirmação de recebimento no passo 1.
 
 **O dublê de extração.** Nesta entrega o adaptador é um dublê determinístico no lugar do fornecedor real. Ele fixa a confiança dos campos obrigatórios pelo tamanho em bytes do arquivo recebido — abaixo de 500 KB, 0,60; a partir de 500 KB, 0,95 — e a dos campos não-obrigatórios em 0,90. Como a confiança do documento é o mínimo dos obrigatórios (seção 3), arquivo abaixo de 500 KB cai em `aguardando_conferência` e a partir de 500 KB vai para `pronto`. É o que permite percorrer os dois ramos da máquina de estados de ponta a ponta sem o fornecedor real: dois arquivos de tamanhos diferentes exercitam os dois caminhos. A relação entre tamanho e qualidade é aproximação assumida para esta entrega — arquivo menor comprime mais e tende a ter menos detalhe real — não uma medida de qualidade de OCR. Motivo da escolha e alternativas descartadas no ADR 0005.
 
@@ -194,11 +199,14 @@ O crítico foi rodado sobre este documento e devolveu 15 achados, organizados po
 - **Achado 2** — campos obrigatórios e não-obrigatórios do tipo identidade tabelados na seção 2; nome padronizado do arquivo definido na seção 3 (`identidade_{id-do-documento}.{extensão-original}`, sem dado pessoal), com a decisão de minimização registrada em `restricoes.md` (d).
 - **Achado 4 (parcial)** — `restricoes.md` (a) e (b) preenchidos com números concretos: formatos `jpg`/`jpeg`/`png`/`pdf` e teto de 15 MB, com `422` na fronteira (b); timeout de 45s, 3 tentativas e backoff 5s/10s/20s (a). Seções 4 e 6 da spec atualizadas com esses números. A restrição (d) recebeu o tratamento de minimização no nome do arquivo; o restante de (d) segue em aberto.
 - **Achado 3 (incidental)** — a regra de tamanho de arquivo do ADR 0005 (abaixo de 500 KB → confiança 0,60 → `aguardando_conferência`; a partir de 500 KB → 0,95 → `pronto`) faz o dublê percorrer os dois ramos principais da máquina de estados de ponta a ponta. Isso resolve o achado 3 para os ramos `pronto` e `aguardando_conferência` — **não** para `falha_temporária` e `falha_definitiva`. **A confirmar numa nova rodada do `critico-de-especificacao`.**
+- **Achado 5** — `pronto` passa a ser estado terminal, como `concluído` e `falha_definitiva`. A transição `consultado` saiu do diagrama da seção 3 e o texto explicita que nenhuma leitura muda estado — consistente com a seção 4.
+- **Achado 6** — a seção 5 ganhou o módulo **Domínio**, dono da validação de transições, do mapeamento de campos por tipo, do cálculo de confiança (ADR 0005) e da geração do nome padronizado. Chamado pela API e pelos workers; não conhece HTTP, fila nem persistência.
+- **Achado 9** — novo estado terminal `rejeitado` no diagrama da seção 3, alcançável de `em_conferência` quando o operador marca o documento como não corrigível com `motivo` obrigatório; operação `POST /documentos/{id}/rejeitar` na seção 4, com a mesma regra de reivindicação do `PATCH`. A ação sobre `falha_definitiva` continua sendo intervenção manual pela listagem, sem operação dedicada — fora do escopo desta rodada.
 
 ### Em aberto
 
 - **`restricoes.md`:** restrições **(c)**, **(e)**, **(f)** e **(g)** ainda sem tratamento preenchido; e o restante de **(d)** — retenção/expurgo, criptografia em repouso, log de acesso, minimização do que vai ao fornecedor, destino do arquivo após o processamento (mesmo conteúdo do achado 7).
-- **Achados importantes 5, 6, 9 e 11** — não endereçados nesta rodada.
+- **Achado importante 11** — não endereçado nesta rodada.
 - **Achados menores 12, 13, 14 e 15** — não endereçados.
 - **Achado 3** — aguarda confirmação do crítico para os ramos de falha.
 - **Achado 8** (teto de custo) — registrado como risco residual em `restricoes.md` (a); não resolvido.
