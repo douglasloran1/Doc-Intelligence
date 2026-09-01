@@ -43,6 +43,18 @@ public class Documento {
     @Column(name = "tipo", nullable = false)
     private String tipo;
 
+    /** Tamanho do arquivo enviado, em bytes. Base da regra do duble de extracao (ADR 0005). */
+    @Column(name = "tamanho_bytes", nullable = false, updatable = false)
+    private long tamanhoBytes;
+
+    /**
+     * Extensao do arquivo enviado ({@code jpg}, {@code jpeg}, {@code png} ou
+     * {@code pdf}), lida do sufixo do nome no multipart (secao 4, N6). Compoe o
+     * nome padronizado (secao 3).
+     */
+    @Column(name = "extensao_original", nullable = false, updatable = false, length = 10)
+    private String extensaoOriginal;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "estado", nullable = false, length = 40)
     private EstadoDocumento estado;

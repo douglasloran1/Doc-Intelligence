@@ -31,11 +31,14 @@ public class DocumentoService {
 
     private final DocumentoRepository documentoRepository;
     private final TransicaoEstadoRepository transicaoRepository;
+    private final JobProcessamentoRepository jobRepository;
 
     public DocumentoService(DocumentoRepository documentoRepository,
-                            TransicaoEstadoRepository transicaoRepository) {
+                            TransicaoEstadoRepository transicaoRepository,
+                            JobProcessamentoRepository jobRepository) {
         this.documentoRepository = documentoRepository;
         this.transicaoRepository = transicaoRepository;
+        this.jobRepository = jobRepository;
     }
 
     @Transactional
@@ -55,10 +58,15 @@ public class DocumentoService {
         documento.setHashConteudo(hash);
         documento.setTipo(TIPO_PADRAO);
         documento.setEstado(EstadoDocumento.RECEBIDO);
+        documento.setTamanhoBytes(arquivo.getSize());
+        documento.setExtensaoOriginal(extensao(arquivo.getOriginalFilename()));
         documento = documentoRepository.save(documento);
 
         transicaoRepository.save(
                 TransicaoEstado.de(documento, null, EstadoDocumento.RECEBIDO, null));
+
+        // Enfileira o processamento (ADR 0003). O worker consome depois, por polling.
+        jobRepository.save(JobProcessamento.pendentePara(documento));
 
         return new ResultadoCriacao(documento, true);
     }

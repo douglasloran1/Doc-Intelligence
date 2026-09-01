@@ -20,8 +20,9 @@ class DocumentoServiceTest {
 
     private final DocumentoRepository documentoRepository = mock(DocumentoRepository.class);
     private final TransicaoEstadoRepository transicaoRepository = mock(TransicaoEstadoRepository.class);
+    private final JobProcessamentoRepository jobRepository = mock(JobProcessamentoRepository.class);
     private final DocumentoService service =
-            new DocumentoService(documentoRepository, transicaoRepository);
+            new DocumentoService(documentoRepository, transicaoRepository, jobRepository);
 
     @Test
     void recusaFormatoNaoSuportado() {
@@ -33,7 +34,7 @@ class DocumentoServiceTest {
                 .extracting(ArquivoInvalidoException::getCodigoMotivo)
                 .isEqualTo("formato_nao_suportado");
 
-        verifyNoInteractions(documentoRepository, transicaoRepository);
+        verifyNoInteractions(documentoRepository, transicaoRepository, jobRepository);
     }
 
     @Test
@@ -47,7 +48,7 @@ class DocumentoServiceTest {
                 .extracting(ArquivoInvalidoException::getCodigoMotivo)
                 .isEqualTo("arquivo_grande");
 
-        verifyNoInteractions(documentoRepository, transicaoRepository);
+        verifyNoInteractions(documentoRepository, transicaoRepository, jobRepository);
     }
 
     @Test
@@ -63,11 +64,18 @@ class DocumentoServiceTest {
         assertThat(resultado.documento().getEstado()).isEqualTo(EstadoDocumento.RECEBIDO);
         assertThat(resultado.documento().getTipo()).isEqualTo("identidade");
         assertThat(resultado.documento().getHashConteudo()).hasSize(64); // SHA-256 em hex
+        assertThat(resultado.documento().getExtensaoOriginal()).isEqualTo("jpg");
+        assertThat(resultado.documento().getTamanhoBytes()).isEqualTo("conteudo-ficticio".getBytes().length);
 
         ArgumentCaptor<TransicaoEstado> transicao = ArgumentCaptor.forClass(TransicaoEstado.class);
         verify(transicaoRepository).save(transicao.capture());
         assertThat(transicao.getValue().getEstadoAnterior()).isNull();
         assertThat(transicao.getValue().getEstadoNovo()).isEqualTo(EstadoDocumento.RECEBIDO);
+
+        ArgumentCaptor<JobProcessamento> job = ArgumentCaptor.forClass(JobProcessamento.class);
+        verify(jobRepository).save(job.capture());
+        assertThat(job.getValue().getEstado()).isEqualTo(EstadoJob.PENDENTE);
+        assertThat(job.getValue().getDocumento()).isSameAs(resultado.documento());
     }
 
     @Test
@@ -84,6 +92,7 @@ class DocumentoServiceTest {
         assertThat(resultado.documento()).isSameAs(existente);
         verify(documentoRepository, never()).save(any());
         verify(transicaoRepository, never()).save(any());
+        verify(jobRepository, never()).save(any());
     }
 
     @Test

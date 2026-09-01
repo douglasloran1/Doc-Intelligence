@@ -27,3 +27,13 @@ spring:
 
 server:
   port: 8080
+
+# Worker de processamento (ADR 0003; §6). Os valores de lease e timeout não têm
+# número testado nesta entrega — ficam como configuração a ajustar em produção
+# (achado 10 do critico-de-especificacao).
+worker:
+  id: ${WORKER_ID:worker-local}
+  polling-ms: 2000            # intervalo entre ciclos de polling da fila
+  lease-segundos: 60          # expiração da reivindicação do worker sobre um job
+  timeout-adaptador-segundos: 45   # ponto de extensão: o dublê é síncrono e não é interrompido; passa a valer com o adaptador real
+
