@@ -1,0 +1,24 @@
+# PostgreSQL para desenvolvimento local (ADR 0002).
+# Credenciais batem com os defaults do src/main/resources/application.yml —
+# subir isto e rodar a aplicacao funciona sem setar nenhuma variavel.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: doc-intelligence-db
+    environment:
+      POSTGRES_DB: doc_intelligence
+      POSTGRES_USER: doc_intelligence
+      POSTGRES_PASSWORD: doc_intelligence
+    ports:
+      - "5432:5432"
+    volumes:
+      - doc-intelligence-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U doc_intelligence -d doc_intelligence"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  doc-intelligence-pgdata:
