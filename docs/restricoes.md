@@ -58,7 +58,7 @@ Cada uma está **tratada** ou **registrada como risco conhecido**, com justifica
 
 **Implica:** sem mecanismo de posse, duas pessoas corrigem o mesmo documento e uma sobrescreve a outra — ou pior, ambas acham que corrigiram.
 **Tratamento:** spec §4 e §6. Reivindicação com expiração, o mesmo padrão usado na fila de processamento. `POST /documentos/{id}/reivindicar` falha com `409` se já houver reivindicação ativa de outra pessoa; `PATCH /documentos/{id}` e `POST /documentos/{id}/rejeitar` exigem reivindicação ativa do mesmo operador. Passado o tempo de expiração sem conclusão, o item volta a ficar disponível.
-**Risco residual:** a posse repousa sobre um identificador de operador auto-declarado na requisição, não autenticado nem verificado — achado 14 do relatório do `critico-de-especificacao`, em aberto. Coerente com a premissa de chamador único de confiança desta entrega (spec §2), mas registrado como risco.
+**Risco residual:** a posse repousa sobre um identificador de operador auto-declarado na requisição, não autenticado nem verificado — achado 14 do relatório do `critico-de-especificacao`, em aberto. Coerente com a premissa de chamador único de confiança desta entrega (spec §2), mas registrado como risco. Na mesma premissa, a Swagger UI adicionada nesta entrega expõe `/swagger-ui` e `/v3/api-docs` sem autenticação — não é categoria de risco nova, é a mesma ausência de autenticação já aceita, e o serviço é consumido por sistemas internos, não por navegador aberto (spec §2).
 
 ---
 

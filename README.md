@@ -69,6 +69,15 @@ mvn spring-boot:run
 
 Sobe em `http://localhost:8080`. O worker de processamento começa sozinho e consome a fila a cada 2 segundos.
 
+## Documentação interativa (Swagger UI)
+
+Com a aplicação no ar, a documentação interativa da API fica em
+**http://localhost:8080/swagger-ui.html** — sem nenhuma configuração adicional. A página
+lista os seis endpoints com descrição, códigos de erro (404/409/422) e seus códigos de
+motivo, e traz exemplos de corpo para as chamadas que recebem JSON. Permite disparar cada
+requisição pelo próprio navegador, sem montar `curl` na mão. O contrato de referência
+continua sendo [`docs/01-especificacao.md`](docs/01-especificacao.md) §4.
+
 ## Testes
 
 ```bash
