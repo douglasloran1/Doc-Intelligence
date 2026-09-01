@@ -25,8 +25,8 @@ Cada uma está **tratada** ou **registrada como risco conhecido**, com justifica
 ### (c) O mesmo documento chega mais de uma vez
 
 **Implica:** o cliente reenvia por insegurança, o atendimento reenvia por precaução. Sem detecção, cada reenvio é uma chamada paga a mais e um item duplicado na fila de conferência.
-**Tratamento:** _(a preencher — hash na entrada? idempotência? política explícita de duplicata?)_
-**Risco residual:** _(a preencher — duplicata semântica: duas fotos do mesmo papel têm hash diferente)_
+**Tratamento:** idempotência por hash do arquivo, descrita na spec §4 (`POST /documentos`). Um documento com hash já visto devolve o registro existente em vez de criar um novo ou reprocessar — sem chamada paga a mais, sem item duplicado na fila de conferência.
+**Risco residual:** duas fotos diferentes do mesmo papel físico têm hash diferente e não são detectadas como duplicata. Registrado na spec §9 ("O que este projeto conscientemente não resolve" — deduplicação semântica) como fora do escopo desta entrega.
 
 ---
 
@@ -41,24 +41,24 @@ Cada uma está **tratada** ou **registrada como risco conhecido**, com justifica
 ### (e) 150 documentos por dia; em pico, mais de 800 entre 9h e 11h
 
 **Implica:** o pico é cerca de 40 vezes a média horária, concentrado em duas horas. Disparar tudo o que chega estoura o limite de taxa do fornecedor e a memória do processo.
-**Tratamento:** _(a preencher — limite de concorrência? backpressure? comportamento na saturação: enfileira, rejeita ou degrada?)_
-**Risco residual:** _(a preencher)_
+**Tratamento:** spec §6 ("Concorrência no volume de pico"). O número de workers em paralelo é limitado explicitamente e mantido abaixo do limite de taxa do fornecedor, para nunca disparar mais chamadas simultâneas do que ele aceita. O que chega acima da capacidade do momento fica na fila, aguardando — não é recusado —, e o cliente já recebeu a confirmação de recebimento no `POST /documentos` antes disso.
+**Risco residual:** não há número concreto para o limite de workers nem para o tamanho máximo da fila. Ficam como configuração a ajustar em produção, sem valor testado nesta entrega.
 
 ---
 
 ### (f) O modelo trocará de versão, e os prompts mudarão mais de uma vez no primeiro ano
 
 **Implica:** é mudança certa, não hipótese. Se o nome do fornecedor e o texto do prompt estiverem espalhados pelo código, cada troca é uma refatoração.
-**Tratamento:** _(a preencher — adaptador? prompt versionado? o resultado guarda qual versão o gerou?)_
-**Risco residual:** _(a preencher)_
+**Tratamento:** spec §5. A fronteira do módulo **Adaptador de extração** isola todo o conhecimento do fornecedor — nenhum outro módulo conhece o nome do fornecedor, o formato do prompt ou a versão do modelo, e uma troca de versão muda só esse módulo. O registro do documento guarda a versão do adaptador/prompt que gerou cada extração (spec §3).
+**Risco residual:** nesta entrega o adaptador é um dublê determinístico, então a fronteira nunca foi exercitada com um fornecedor real — o desenho existe, mas não foi testado sob uma troca de versão de verdade.
 
 ---
 
 ### (g) Duas pessoas do atendimento podem abrir a fila de conferência ao mesmo tempo
 
 **Implica:** sem mecanismo de posse, duas pessoas corrigem o mesmo documento e uma sobrescreve a outra — ou pior, ambas acham que corrigiram.
-**Tratamento:** _(a preencher — claim com expiração? o que a segunda pessoa vê?)_
-**Risco residual:** _(a preencher)_
+**Tratamento:** spec §4 e §6. Reivindicação com expiração, o mesmo padrão usado na fila de processamento. `POST /documentos/{id}/reivindicar` falha com `409` se já houver reivindicação ativa de outra pessoa; `PATCH /documentos/{id}` e `POST /documentos/{id}/rejeitar` exigem reivindicação ativa do mesmo operador. Passado o tempo de expiração sem conclusão, o item volta a ficar disponível.
+**Risco residual:** a posse repousa sobre um identificador de operador auto-declarado na requisição, não autenticado nem verificado — achado 14 do relatório do `critico-de-especificacao`, em aberto. Coerente com a premissa de chamador único de confiança desta entrega (spec §2), mas registrado como risco.
 
 ---
 
