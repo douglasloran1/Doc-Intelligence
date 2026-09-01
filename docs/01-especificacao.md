@@ -98,7 +98,7 @@ API HTTP, JSON. Toda resposta de erro inclui um código de motivo, não apenas u
 
 | Operação | Descrição | Idempotente |
 |---|---|---|
-| `POST /documentos` | Recebe o arquivo (multipart). Formatos aceitos: `jpg`, `jpeg`, `png`, `pdf`; tamanho máximo 15 MB. Arquivo fora desses critérios é rejeitado com `422` antes de entrar na fila — sem item enfileirado, sem chamada ao fornecedor. Responde com `id` e `status: recebido`. Calcula o hash do arquivo; se já existir um documento com o mesmo hash, responde com o documento existente em vez de criar um novo. | Sim, por hash |
+| `POST /documentos` | Recebe o arquivo (multipart). Formatos aceitos: `jpg`, `jpeg`, `png`, `pdf`; tamanho máximo 15 MB. O formato vem do sufixo do nome do arquivo enviado no multipart — não do `Content-Type` nem de inspeção do conteúdo. Arquivo fora desses critérios é rejeitado com `422` antes de entrar na fila — sem item enfileirado, sem chamada ao fornecedor. Responde com `id` e `status: recebido`. Calcula o hash do arquivo; se já existir um documento com o mesmo hash, responde com o documento existente em vez de criar um novo. | Sim, por hash |
 | `GET /documentos/{id}` | Estado atual, campos extraídos, histórico de transições. | — (leitura) |
 | `GET /documentos?status=&tipo=` | Lista paginada, filtrável por estado e tipo. | — (leitura) |
 | `POST /documentos/{id}/reivindicar` | Marca o documento como em conferência por um identificador de operador, com expiração. Falha com `409` se já estiver reivindicado por outra pessoa e a reivindicação não tiver expirado. | Não |
@@ -200,7 +200,7 @@ As correções foram feitas em rodadas; o que segue é o estado atual.
 ### Confirmados na rodada 2, com as ressalvas resolvidas
 
 - **Achado 1** — cálculo de confiança no [ADR 0005](adr/0005-calculo-do-nivel-de-confianca.md), refletido nas seções 2, 3 e 6 (confiança por campo 0,0–1,0; confiança do documento = mínimo dos obrigatórios; limiar 0,85 provisório numa constante única). A ressalva de notação `>` vs `≥` na seção 2 foi corrigida (N7).
-- **Achado 2** — campos do tipo identidade tabelados na seção 2; nome `identidade_{id-do-documento}.{extensão-original}` na seção 3, sem dado pessoal, consistente com `restricoes.md` (d). A origem da extensão fica como ponto menor em aberto (N6).
+- **Achado 2** — campos do tipo identidade tabelados na seção 2; nome `identidade_{id-do-documento}.{extensão-original}` na seção 3, sem dado pessoal, consistente com `restricoes.md` (d). A origem da extensão foi definida na implementação (N6, resolvido — ver abaixo).
 - **Achado 3** — a regra de tamanho de arquivo do ADR 0005 leva o dublê por `pronto` e por `aguardando_conferência → em_conferência → (concluído | rejeitado)`. A rodada 2 confirmou que a spec **não** superdeclara: os ramos `falha_temporária`/`falha_definitiva` estão escritos como não exercitados pelo dublê. A lacuna de operação sobre `falha_definitiva` foi fechada (N3).
 - **Achado 4** — as sete restrições de `restricoes.md` têm Tratamento e Risco residual. A rodada 2 apontou overclaim em (b) — corrigido (N5) — e números que não fecham em (e), que ficam no achado 10 / N8.
 - **Achado 5** — `pronto`, `concluído`, `falha_definitiva` e `rejeitado` são terminais; nenhuma leitura muda estado. Diagrama, seção 3 e seção 4 concordam. Sem ressalva.
@@ -217,6 +217,10 @@ As correções foram feitas em rodadas; o que segue é o estado atual.
 - **N7** — a seção 2 passou a usar `≥ 0,85` / `< 0,85`, a mesma notação do ADR 0005, da seção 3 e do diagrama.
 - **N9** — o `README.md` de `docs/adr/` passou a listar o ADR 0005 na tabela.
 
+### Resolvido na implementação
+
+- **N6** — a origem do formato/extensão do arquivo estava indefinida (sufixo do nome, `Content-Type` ou inspeção do conteúdo). A implementação do `POST /documentos` (2026-09-01) decidiu: o formato vem do **sufixo do nome do arquivo enviado no multipart**, sem inspeção de conteúdo — coerente com `restricoes.md` (b), que já registra que não há decodificação na fronteira. Registrado na seção 4 (contrato). Vale tanto para o `422` de formato quanto para o `{extensão-original}` do nome padronizado (seção 3).
+
 ### Em aberto
 
 - **Achado 7 / restante de (d)** — retenção/expurgo, criptografia em repouso, log de acesso, minimização do que vai ao fornecedor e destino do arquivo original após o processamento: sem tratamento, risco aceito nesta entrega (seção 9). A rodada 2 observou que "onde o arquivo original é guardado" é decisão de desenho, não só política operacional.
@@ -224,6 +228,5 @@ As correções foram feitas em rodadas; o que segue é o estado atual.
 - **Achado 10 / N8** — sem valor testado para: expiração da reivindicação do operador e do worker, número de workers, rate limit do fornecedor, parâmetros de paginação, profundidade da fila. Os números de volume em `restricoes.md` (e) não reconciliam entre si. Ficam como configuração a ajustar em produção.
 - **Achado 11** — a seção 2 ainda não demarca, mecanismo a mecanismo da seção 6, o que é código nesta entrega e o que é só desenho (retry/backoff, pool de workers).
 - **Achados menores 12, 13, 14, 15** — idempotência sem exceção por estado terminal; quem declara o `tipo` na entrada e o filtro `?tipo=` numa fatia de um tipo só; identificador de operador auto-declarado; `409` sem indicar quem reivindicou nem quando expira. Não endereçados.
-- **N6** — a origem da extensão/formato do arquivo (sufixo do nome, `Content-Type` ou sniffing) não está definida; afeta o `422` e o nome proposto. Menor.
 - **N10** — a regra de confiança não diz o que acontece se o adaptador não devolver um campo obrigatório (o dublê sempre devolve os três). Menor.
 - **N11** — um documento em `pronto` com um campo obrigatório errado (o dublê manda todo arquivo `≥ 500 KB` para `pronto` a 0,95) não tem operação de retorno. Risco aceito nesta fatia.
